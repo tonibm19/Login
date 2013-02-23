@@ -15,10 +15,9 @@ The installation for Login is simple, just follow these steps:
    * login.register
    * login.login
    * login.changepass
-   * login.removeacc
    * login.logout
+   * Add login.removeacc to your admin/mod group
  * You have now installed Login for MCServer!
-
 Configuration
 -------------
 
