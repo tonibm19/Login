@@ -12,19 +12,27 @@ function Initialize( Plugin )
 	PluginManager:AddHook(Plugin, cPluginManager.HOOK_PLAYER_BREAKING_BLOCK)
 	PluginManager:AddHook(Plugin, cPluginManager.HOOK_PLAYER_SPAWNED)
 	PluginManager:AddHook(Plugin, cPluginManager.HOOK_PLAYER_MOVING)
-	
+	PluginManager:AddHook(Plugin, cPluginManager.HOOK_PLAYER_TOSSING_ITEM)
 	
 	LoadSettings()
 	CreateTables()
 	LoadSettings()
 	LoadPasswords()
 	LoadPlayers()
-	dofile( PLUGIN:GetLocalDirectory() .. "/Commands/commands.lua" )
+	if string.upper(Storage) == "SQLITE" then
+		dofile( PLUGIN:GetLocalDirectory() .. "/Commands/sqlite.lua" )
+	elseif string.upper(Storage) == "INI" then
+		dofile( PLUGIN:GetLocalDirectory() .. "/Commands/ini.lua" )
+	else
+		LOGWARN( "The given storage scheme is invaild" )
+	end
+	dofile( PLUGIN:GetLocalDirectory() .. "/Commands/global.lua" )
 	if PasswordType == "Chat" then
 		PluginManager:BindCommand("/login",       "login.login",         HandleLoginCommand,         "" )
 		PluginManager:BindCommand("/register",    "login.register",      HandleRegisterCommand,      "" )
 	end
 	PluginManager:BindCommand("/changepass",      "login.changepass",    HandleChangePasswordCommand,      "" )
+	PluginManager:BindCommand("/logout",          "login.logout",        HandleLogoutCommand,            "" )
 	
 	LOG( "Initializing " .. Plugin:GetName() .. " v" .. Plugin:GetVersion() )
 	return true
@@ -37,6 +45,6 @@ function OnDisable()
 			Client:Kick( "Server reload" )
 		end
 	end
-	PwdDB:close()
 	cRoot:Get():ForEachPlayer( LoopPlayers )
+	PwdDB:close()
 end

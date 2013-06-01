@@ -3,6 +3,7 @@ function CreateTables()
 	Coords = {}
 	PatternCount = {}
 	PatternChange = {}
+	Tossing = {}
 end
 
 function LoadPlayers()
@@ -75,6 +76,7 @@ function LoadPasswords()
 				LOGWARN("SQL query failed: " .. Res .. " (" .. PwdDB:errmsg() .. ")");
 			end
 		end
+		DB:close()
 	elseif string.upper(Storage) == "INI" then
 		PassIni = cIniFile( PLUGIN:GetLocalDirectory() .. "/Players.ini" )
 		if PassIni:ReadFile() == false then
@@ -121,6 +123,7 @@ function SendRegistrationPattern( Player )
 		PassIni:WriteFile()
 		Login( Player )
 		Player:SendMessage( cChatColor.LightGreen .. "You registered" )
+		Tossing[Player:GetName()] = true
 	end
 	RegisterWindow:SetOnClosing( OnClosing )
 	Player:OpenWindow(RegisterWindow);
@@ -156,6 +159,7 @@ function SendLoginPattern( Player )
 			end
 			return true
 		end
+		Tossing[Player:GetName()] = true
 	end
 	LoginWindow:SetOnClosing( OnClosing )
 	Player:OpenWindow(LoginWindow);
@@ -209,6 +213,7 @@ function SendSqlLoginPattern( Player )
 			end
 			return true
 		end
+		Tossing[Player:GetName()] = true
 	end
 	LoginWindow:SetOnClosing( OnClosing )
 	Player:OpenWindow( LoginWindow )
@@ -242,6 +247,7 @@ function ChangePattern( Player )
 		else
 			Player:SendMessage( cChatColor.Rose .. "Wrong pattern" )
 		end
+		Tossing[Player:GetName()] = true
 	end
 	OldPattern:SetOnClosing( OnClosing )
 	Player:OpenWindow(OldPattern);
@@ -261,6 +267,7 @@ function ChangeSqlitePattern( Player )
 		if PatternChange[Player:GetName()] == true then
 			local SQL = [[UPDATE Pattern SET Pattern=']] .. Pattern .. [[' WHERE Name=']] .. Player:GetName() .. [[';]]
 			PwdDB:exec( SQL )
+			Player:SendMessage( cChatColor.LightGreen .. "The password is changed" )
 			return false
 		end	
 		local function ProcessRow(UserData, NumCols, Values, Names)
@@ -279,6 +286,7 @@ function ChangeSqlitePattern( Player )
 			end
 			return true
 		end
+		Tossing[Player:GetName()] = true
 	end
 	OldPattern:SetOnClosing( OnClosing )
 	Player:OpenWindow( OldPattern )

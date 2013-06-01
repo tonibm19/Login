@@ -36,7 +36,6 @@ end
 function OnPlayerSpawned( Player )
 	Logout( Player )
 	World = Player:GetWorld()
-	Player:TeleportTo( World:GetSpawnX(), World:GetSpawnY(), World:GetSpawnZ() )
 	if string.upper(Storage) == "INI" then
 		if PasswordType == "Pattern" then
 			Found, Pattern = PassIni:GetValue( "Pattern", Player:GetName() )
@@ -68,5 +67,12 @@ end
 function OnPlayerMoving( Player )
 	if CheckIfAuthenticated( Player ) == true then
 		Player:TeleportTo( Player:GetWorld():GetSpawnX(), Player:GetWorld():GetSpawnY(), Player:GetWorld():GetSpawnZ() )
+	end
+end
+
+function OnPlayerTossingItem(Player)
+	if Tossing[Player:GetName()] == true then
+		Tossing[Player:GetName()] = false
+		return true
 	end
 end
