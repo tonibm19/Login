@@ -1,51 +1,285 @@
--- Author STR_Warrior --
+function CreateTables()
+	Auth = {}
+	Coords = {}
+	PatternCount = {}
+	PatternChange = {}
+end
+
+function LoadPlayers()
+	local LoopPlayers = function( Player )
+		Login( Player )
+	end
+	cRoot:Get():ForEachPlayer( LoopPlayers )
+end
+
+function Login( Player )
+	Auth[Player:GetName()] = true
+	if Coords[Player:GetName()] ~= nil then
+		local Coordinates = StringSplit( Coords[Player:GetName()], "," )
+		Player:TeleportTo( Coordinates[1], Coordinates[2], Coordinates[3] )
+	end
+end
+
+function Logout( Player )
+	Auth[Player:GetName()] = false
+	Coords[Player:GetName()] = Player:GetPosX() .. "," .. Player:GetPosY() .. "," .. Player:GetPosZ()
+end
+
+function CheckIfAuthenticated( Player, Action )
+	if Action ~= nil then
+		if Action == 0 then
+			Message = cChatColor.Rose .. "Please login before using commands"
+		elseif Action == 1 then
+			Message = cChatColor.Rose .. "Please login before chatting"
+		elseif Action == 2 then
+			Message = cChatColor.Rose .. "Please login before placing blocks"
+		elseif Action == 3 then
+			Message = cChatColor.Rose .. "Please login before breaking blocks"
+		end
+		if Auth[Player:GetName()] == false then
+			Player:SendMessage( Message )
+			return true
+		else
+			return false
+		end
+	else
+		if Auth[Player:GetName()] == false then
+			return true
+		else
+			return false
+		end
+	end
+end
 
 function LoadSettings()
-  Settings = cIniFile(PLUGIN:GetLocalDirectory() .."/Config.ini")
-	Settings:ReadFile()
-									Settings:DeleteKeyComments("Settings") 
-									Settings:KeyComment("Settings", 'There are 2 storage types. the "Old" and the new "Ini" ')
-	Tries = 						Settings:GetValueSetI("Settings","Tries", 			3)
-	Storage = 						Settings:GetValueSet("Settings", "Storage", "Ini")
-	NotRegistered = 				Settings:GetValueSet("Messages","NotRegistered", 	"Please register using /register (password)")
-	NotLoggedIn = 					Settings:GetValueSet("Messages","NotLoggedIn", 	"Please log in using /login (password)")
-	TossingItem = 					Settings:GetValueSet("Messages","TossingItem", 	"Please log in before tossing items")
-	OnPlayerChat = 					Settings:GetValueSet("Messages","OnPlayerChat", 	"Please log in before you start talking")
-	OnBreaking =					Settings:GetValueSet("Messages","PlayerBreaking","Please log in before breaking blocks")
-	OnPlacing = 					Settings:GetValueSet("Messages","PlayerPlacing", 	"Please log in before placing blocks")
-	ChangePasswordWrong = 			Settings:GetValueSet("Messages","ChangePasswordWrong","your old password is wrong. Usage: /changepass (oldpassword) (newpassword)")
-	ChangePassword = 				Settings:GetValueSet("Messages","ChangePassword", 	"Usage: /changepass (oldpassword) (newpassword)")
-	LoggedIn = 						Settings:GetValueSet("Messages","LoggedIn", 		"You are logged in")
-	Login = 						Settings:GetValueSet("Messages","Login","Usage: /login (password)")
-	AlreadyLoggedIn = 				Settings:GetValueSet("Messages","AlreadyLoggedIn" ,"You are already logged in")
-	Logout = 						Settings:GetValueSet("Messages","Logout","You are now logged out")
-	Register = 						Settings:GetValueSet("Messages","Register","Usage: /register (password)")
-	AlreadyRegistered = 			Settings:GetValueSet("Messages","AlreadyRegistered","you already have registered")
-	Registered = 					Settings:GetValueSet("Messages","Registered","You have registered")
-	RemoveAcc = 					Settings:GetValueSet("Messages","RemoveAcc","Usage: /removeacc (player)")
-	DeleteNoAccount = 				Settings:GetValueSet("Messages","NoDeleteAccount","Acount does not exist")
-	AccountRemoved = 				Settings:GetValueSet("Messages","AccountRemoved","Account Removed")
-	ReloadKick = 					Settings:GetValueSet("Kick","Reload","The server was reloaded while you were not logged in.")
-	Settings:WriteFile()
-end
-
-function InitConsoleCommands()
-	local PluginMgr = cPluginManager:Get();
-	PluginMgr:BindConsoleCommand("managelogin",                 HandleConsoleCommand,                 "Manage the login plugin");
-end
-
-function LoadOnlinePlayers()
-    local loopPlayers = function( Player )
-		Auth[Player:GetName()] = true
-    end
-    local loopWorlds = function ( World )
-        World:ForEachPlayer( loopPlayers )
-    end
-    cRoot:Get():ForEachWorld( loopWorlds )
+	SettingsIni = cIniFile( PLUGIN:GetLocalDirectory() .. "/Config.ini" )
+	SettingsIni:ReadFile()
+	Tries = SettingsIni:GetValueSetI( "General", "Tries", 3 )
+	Storage = SettingsIni:GetValueSet( "General", "Storage", "SQLite" )
+	PasswordType = SettingsIni:GetValueSet( "General", "Password", "Chat" )
+	SettingsIni:WriteFile()
 end
 
 function LoadPasswords()
-	PassIni = cIniFile(PLUGIN:GetLocalDirectory() .. "/Players.ini")
-	PassIni:ReadFile()
-	PassIni:WriteFile()
+	if string.upper(Storage) == "SQLITE" then
+		DB = io.open( PLUGIN:GetLocalDirectory() .. "/Players.sqlite", "r" )
+		PwdDB = {}
+		PwdDB, ErrCode, ErrMsg = sqlite3.open(PLUGIN:GetLocalDirectory() .. "/Players.sqlite");
+		if not DB then
+			local CreateTable = [[
+							CREATE TABLE Passwords(Name,Password);
+							CREATE TABLE Pattern(Name,Pattern);
+			]]
+			local Res = PwdDB:exec( CreateTable )
+			if Res ~= sqlite3.OK then
+				LOGWARN("SQL query failed: " .. Res .. " (" .. PwdDB:errmsg() .. ")");
+			end
+		end
+	elseif string.upper(Storage) == "INI" then
+		PassIni = cIniFile( PLUGIN:GetLocalDirectory() .. "/Players.ini" )
+		if PassIni:ReadFile() == false then
+			PassIni:WriteFile()
+		end
+	end
+end
+
+function CheckPassword( Player, Split )
+	local Password = PassIni:GetValue( "Passwords", Player:GetName() )
+	if Password == nil then
+		return false
+	elseif Password == md5( Split[2] ) then
+		Login( Player )
+		Player:SendMessage( cChatColor.LightGreen .. "You logged in" )
+		return true
+	else
+		Player:SendMessage( cChatColor.Rose .. "You entered the wrong password" )
+		return
+	end
+end
+
+function CheckIfAccExist( Player )
+	if PassIni:GetValue( "Passwords", Player:GetName() ) == "" then
+		return false
+	else
+		return true
+	end
+end
+
+function SendRegistrationPattern( Player )
+	local WindowType = cWindow.DropSpenser;
+	local RegisterWindow = cLuaWindow(WindowType, 3, 3, "Registration. exit to complete");
+	for i=0, 8 do
+		RegisterWindow:SetSlot(Player, i, cItem(E_BLOCK_WATER, 1));
+	end
+	PatternCount[Player:GetName()] = 1
+	local OnClosing = function(Window, Player)
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		PassIni:SetValue( "Pattern", Player:GetName(), md5(Pattern) )
+		PassIni:WriteFile()
+		Login( Player )
+		Player:SendMessage( cChatColor.LightGreen .. "You registered" )
+	end
+	RegisterWindow:SetOnClosing( OnClosing )
+	Player:OpenWindow(RegisterWindow);
+end
+
+function WritePatternToSQL( Pattern, Player )
+	local UserName = Player:GetName()
+	local Res = PwdDB:exec('INSERT INTO Pattern VALUES("' .. UserName .. '", "' .. Pattern .. '");'  )
+	if Res ~= sqlite3.OK then
+		 LOG("PwdDB:exec() failed: " .. Res .. " (" .. PwdDB:errmsg() .. ")");
+	end
+end
+
+function SendLoginPattern( Player )
+	local WindowType = cWindow.DropSpenser;
+	local LoginWindow = cLuaWindow(WindowType, 3, 3, "Login. exit to complete");
+	for i=0, 8 do
+		LoginWindow:SetSlot(Player, i, cItem(E_BLOCK_LAVA, 1));
+	end
+	PatternCount[Player:GetName()] = 1
+	local OnClosing = function(Window, Player)
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		if PassIni:GetValue( "Pattern", Player:GetName() ) == md5(Pattern) then
+			Login( Player )
+			Player:SendMessage( cChatColor.LightGreen .. "You logged in" )
+		else
+			PatternCount[Player:GetName()] = PatternCount[Player:GetName()] + 1
+			if PatternCount[Player:GetName()] > Tries then
+				Player:GetClientHandle():Kick( cChatColor.Rose .. "too many tries" )
+			end
+			return true
+		end
+	end
+	LoginWindow:SetOnClosing( OnClosing )
+	Player:OpenWindow(LoginWindow);
+end
+
+function SendSqlRegistrationPattern(  Player )
+	local WindowType = cWindow.DropSpenser;
+	local RegisterWindow = cLuaWindow(WindowType, 3, 3, "Registration. exit to complete");
+	for i=0, 8 do
+		RegisterWindow:SetSlot(Player, i, cItem(E_BLOCK_WATER, 1));
+	end
+	local OnClosing = function( Window, Player )
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		WritePatternToSQL( Pattern, Player )
+		Login( Player )
+	end
+	RegisterWindow:SetOnClosing( OnClosing )
+	Player:OpenWindow(RegisterWindow);
+end
+
+function SendSqlLoginPattern( Player )
+	local WindowType = cWindow.DropSpenser;
+	local LoginWindow = cLuaWindow(WindowType, 3, 3, "Login. exit to complete");
+	for i=0, 8 do
+		LoginWindow:SetSlot(Player, i, cItem(E_BLOCK_LAVA, 1));
+	end
+	PatternCount[Player:GetName()] = 1
+	local OnClosing = function( Window, Player )
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		local function ProcessRow(UserData, NumCols, Values, Names)
+			for i = 1, NumCols do
+				if (Names[i] == "Pattern") then  -- "Password" is the column name
+					ShouldAllowLogin = (Values[i] == Pattern);
+				end
+			end
+		end
+		local Res = PwdDB:exec( 'SELECT * FROM Pattern WHERE Name="' .. Player:GetName() .. '"', ProcessRow, nil )
+		if ShouldAllowLogin == true then
+			Login( Player )
+			return false
+		else
+			PatternCount[Player:GetName()] = PatternCount[Player:GetName()] + 1
+			if PatternCount[Player:GetName()] > Tries then
+				Player:GetClientHandle():Kick( cChatColor.Rose .. "too many tries" )
+			end
+			return true
+		end
+	end
+	LoginWindow:SetOnClosing( OnClosing )
+	Player:OpenWindow( LoginWindow )
+end
+
+function ChangePattern( Player )
+	local WindowType = cWindow.DropSpenser;
+	local OldPattern = cLuaWindow(WindowType, 3, 3, "Change Pattern");
+	for i=0, 8 do
+		OldPattern:SetSlot(Player, i, cItem(E_BLOCK_WALLSIGN, 1));
+	end
+	local OnClosing = function(Window, Player)
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		if PatternChange[Player:GetName()] == true then
+			PassIni:DeleteValue( "Pattern", Player:GetName() )
+			PassIni:SetValue( "Pattern", Player:GetName(), md5(Pattern) )
+			PassIni:WriteFile()
+			PatternChange[Player:GetName()] = false
+			Player:SendMessage( cChatColor.LightGreen .. "Pattern changed" )
+			return false
+		end
+		if PassIni:GetValue( "Pattern", Player:GetName() ) == md5(Pattern) then
+			for i=0, 8 do
+				Window:SetSlot(Player, i, cItem(E_BLOCK_SUGARCANE, 1 ));			
+				PatternChange[Player:GetName()] = true
+			end
+			return true
+		else
+			Player:SendMessage( cChatColor.Rose .. "Wrong pattern" )
+		end
+	end
+	OldPattern:SetOnClosing( OnClosing )
+	Player:OpenWindow(OldPattern);
+end
+
+function ChangeSqlitePattern( Player )
+	local WindowType = cWindow.DropSpenser;
+	local OldPattern = cLuaWindow(WindowType, 3, 3, "Change Pattern");
+	for i=0, 8 do
+		OldPattern:SetSlot(Player, i, cItem(E_BLOCK_WALLSIGN, 1));
+	end
+	local OnClosing = function(Window, Player)
+		local Pattern = ""
+		for i=0, 8 do
+			Pattern = Pattern .. Window:GetSlot( Player, i ).m_ItemCount .. ","
+		end
+		if PatternChange[Player:GetName()] == true then
+			local SQL = [[UPDATE Pattern SET Pattern=']] .. Pattern .. [[' WHERE Name=']] .. Player:GetName() .. [[';]]
+			PwdDB:exec( SQL )
+			return false
+		end	
+		local function ProcessRow(UserData, NumCols, Values, Names)
+			for i = 1, NumCols do
+				if (Names[i] == "Pattern") then  -- "Password" is the column name
+					ShouldAllowLogin = (Values[i] == Pattern);
+				end
+			end
+			return 0;
+		end
+		local Res = PwdDB:exec( "SELECT * FROM Pattern WHERE Name=\"" .. Player:GetName() .."\"", ProcessRow, nil);
+		if ShouldAllowLogin == true then
+			for i=0, 8 do
+				Window:SetSlot(Player, i, cItem(E_BLOCK_SUGARCANE, 1 ));			
+				PatternChange[Player:GetName()] = true
+			end
+			return true
+		end
+	end
+	OldPattern:SetOnClosing( OnClosing )
+	Player:OpenWindow( OldPattern )
 end

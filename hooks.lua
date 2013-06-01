@@ -1,156 +1,72 @@
--- Author STR_Warrior --
-
 function OnExecuteCommand(Player, CommandSplit)
-	if (Player == nil) then
-		return false;
-	end
-	if (Auth[Player:GetName()] == true) then
-		return false;
-	end
-	if Storage ~= "Ini" then
-		AuthDir[Player:GetName()] = io.open(PluginDir .. "Players/" .. Player:GetName(), "r" )
-		if 	AuthDir[Player:GetName()] then
-			AuthDir[Player:GetName()]:close()
-			if (CommandSplit[1] ~= "/login") then 
-				return true
-			end
-		else		
-			if (CommandSplit[1] ~= "/register") then
-				return true
-			end
-		end
-	else
-		if PassIni:FindKey(Player:GetName()) ~= -1 then
-			if (CommandSplit[1] ~= "/login") then 
-				return true
-			end
-		else		
-			if (CommandSplit[1] ~= "/register") then
-				return true
-			end 
-		end
-	end
-end
-
-function OnPlayerTossingItem(Player)
-	if Auth[Player:GetName()] == false then
-		Player:SendMessage(cChatColor.Rose .. TossingItem)
-		return true
-	end
-end
-
-function OnHandshake(ClientHandle, UserName)	
-	local loopPlayers = function( Player )
-		if (Player:GetName() == UserName) then
-			Player:SendMessage( "Somebody just tried to login in under your name." )
-			ClientHandle:Kick("There is already somebody with that name")
-			return true
-		end
-    end
-    local loopWorlds = function ( World )
-        World:ForEachPlayer( loopPlayers )
-    end
-	cRoot:Get():ForEachWorld( loopWorlds )
-end
-
-function OnDisconnect(Player)
-	if Auth[Player:GetName()] == false then
-		LOGWARN("Player " .. Player:GetName() .. " Logged out without logging in")
-	end
-end
-
-function OnChat(Player)
-	if Auth[Player:GetName()] == false then
-		Player:SendMessage(cChatColor.Rose .. OnPlayerChat)
-		return true
-	end
-end
-
-function OnPlayerLeftClick(Player)
-	if Auth[Player:GetName()] == false then
-		Player:SendMessage(cChatColor.Rose .. OnBreaking)
-		return true
-	end
-end
-
-function OnPlayerRightClick(Player)
-	if Auth[Player:GetName()] == false then
-		Player:SendMessage(cChatColor.Rose .. OnPlacing)
-		return true
-	end
-end
-
-function OnPlayerJoined(Player)
-	PlayerMSG[Player:GetName()] = 1
-	Count[Player:GetName()] = Tries
-	X[Player:GetName()] = Player:GetPosX()
-	Y[Player:GetName()] = Player:GetPosY()
-	Z[Player:GetName()] = Player:GetPosZ()
-	if tDisable == true then
-		Auth[Player:GetName()] = true
-		tDisable = false
+	if Player == nil then
 		return false
 	end
-	if Disable == true then
-		Auth[Player:GetName()] = true
-		return false
-	else
-		Auth[Player:GetName()] = false
-	end
-	if Storage ~= "Ini" then
-		AuthDir[Player:GetName()] = io.open(PluginDir .. "Players/" .. Player:GetName(), "r" )
-		if AuthDir[Player:GetName()] then
-			AuthDir[Player:GetName()]:close()
-			Player:SendMessage(cChatColor.Rose .. NotLoggedIn)
+	if CheckIfAuthenticated( Player ) == false then
+		if CommandSplit[1] == "/login" or CommandSplit[1] == "/register" then
+			return false
 		else		
-			Player:SendMessage(cChatColor.LightGreen .. NotRegistered)
-		end
-	else
-		if PassIni:FindKey(Player:GetName()) ~= -1 then
-			Player:SendMessage(cChatColor.Rose .. NotLoggedIn)
-		else
-			Player:SendMessage(cChatColor.LightGreen .. NotRegistered)
+			return CheckIfAuthenticated( Player )
 		end
 	end
+end
+
+function OnChat( Player, Message )
+	return CheckIfAuthenticated( Player, 1 )
+end
+
+function OnDisconnect(Player, Reason)
+	Logout( Player )
 end
 
 function OnTakeDamage(Receiver, TDI)
-	if Receiver:IsPlayer() == true then
-		if Auth[Receiver:GetName()] == false then
-			TDI.FinalDamage = 0
+	if Receiver:IsPlayer() then
+		return CheckIfAuthenticated( Receiver )
+	end
+end
+
+function OnPlayerPlacingBlock(Player, BlockX, BlockY, BlockZ, BlockFace, CursorX, CursorY, CursorZ, BlockType)
+	return CheckIfAuthenticated( Player, 2 )
+end
+
+function OnPlayerBreakingBlock(Player, BlockX, BlockY, BlockZ, BlockFace, CursorX, CursorY, CursorZ, BlockType)
+	return CheckIfAuthenticated( Player, 3 )
+end
+
+function OnPlayerSpawned( Player )
+	Logout( Player )
+	World = Player:GetWorld()
+	Player:TeleportTo( World:GetSpawnX(), World:GetSpawnY(), World:GetSpawnZ() )
+	if string.upper(Storage) == "INI" then
+		if PasswordType == "Pattern" then
+			Found, Pattern = PassIni:GetValue( "Pattern", Player:GetName() )
+			if Found == "" then
+				SendRegistrationPattern( Player )
+			else
+				SendLoginPattern( Player )
+			end
+		end
+	elseif string.upper(Storage) == "SQLITE" then
+		if PasswordType == "Pattern" then
+			local function ProcessRow(UserData, NumCols, Values, Names)
+				for i = 1, NumCols do
+					if (Names[i] == "Pattern") then  -- "Pattern" is the column name
+						PlayerExist = true
+					end
+				end
+			end
+			local Res = PwdDB:exec('SELECT * FROM Pattern WHERE Name="'.. Player:GetName() ..'"', ProcessRow, nil);
+			if PlayerExist then
+				SendSqlLoginPattern( Player )
+			else
+				SendSqlRegistrationPattern( Player )
+			end
 		end
 	end
 end
 
-function OnTick()
-	local loopPlayers = function( Player )
-		World = Player:GetWorld()
-		if Auth[Player:GetName()] == false then
-			PlayerMSG[Player:GetName()] = PlayerMSG[Player:GetName()] + 1
-			if PlayerMSG[Player:GetName()] == 40 then
-				if Storage ~= "Ini" then
-					if AuthDir[Player:GetName()] then
-						Player:SendMessage(cChatColor.Rose .. NotLoggedIn)
-						PlayerMSG[Player:GetName()] = 1
-					else
-						Player:SendMessage(cChatColor.Rose .. NotRegistered)
-						PlayerMSG[Player:GetName()] = 1
-					end
-				else
-					if PassIni:FindKey(Player:GetName()) == -1 then
-						Player:SendMessage(cChatColor.Rose .. NotRegistered)
-						PlayerMSG[Player:GetName()] = 1
-					else
-						Player:SendMessage(cChatColor.Rose .. NotLoggedIn)
-						PlayerMSG[Player:GetName()] = 1
-					end
-				end
-			end
-			Player:TeleportTo( World:GetSpawnX(), World:GetSpawnY(), World:GetSpawnZ() )
-		end
+function OnPlayerMoving( Player )
+	if CheckIfAuthenticated( Player ) == true then
+		Player:TeleportTo( Player:GetWorld():GetSpawnX(), Player:GetWorld():GetSpawnY(), Player:GetWorld():GetSpawnZ() )
 	end
-	local loopWorlds = function ( World )
-		World:ForEachPlayer( loopPlayers )
-	end
-	cRoot:Get():ForEachWorld( loopWorlds )
 end
